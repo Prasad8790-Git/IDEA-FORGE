@@ -52,27 +52,85 @@ export default function App() {
   }
   async function getRecommendations(e) {
     e?.preventDefault(); setSoilBusy(true); setSoilError(''); setRecommendations(null);
-    try { const r = await fetch('/api/recommendations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(soil) }); const data = await r.json(); if (!r.ok) throw new Error(data.error); setRecommendations(data); fetch('/api/soil', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...soil, userId: userId || undefined, location }) }).catch(() => {}); }
-    catch (e) { setSoilError(e.message || 'Recommendations could not be loaded.'); } finally { setSoilBusy(false); }
-  }
-  async function askAssistant(e) {
-    e?.preventDefault(); if (!question.trim() || chatBusy) return;
-    const asked = question.trim(); setQuestion(''); setMessages(current => [...current, { role: 'user', text: asked }]); setChatBusy(true); setChatError('');
-    try { const r = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question: asked, language, location, userId, context: { weather: weather ? { description: weather.current.description, temperature: weather.current.temperature, rainfallForecast: weather.forecast?.map(day => ({ date: day.date, rainfall: day.rainfall })) } : null, soil: recommendations?.crops?.map(item => item.name) || null }) }); const data = await r.json(); if (!r.ok) throw new Error(data.error); setMessages(current => [...current, { role: 'assistant', text: data.answer }]); if ('speechSynthesis' in window) { window.speechSynthesis.cancel(); const utterance = new SpeechSynthesisUtterance(data.answer); utterance.lang = language === 'te' ? 'te-IN' : language === 'hi' ? 'hi-IN' : 'en-IN'; window.speechSynthesis.speak(utterance); } }
-    catch (e) { setChatError(e.message || 'The assistant could not answer.'); } finally { setChatBusy(false); }
-  }
-  function startVoice() {
-    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!Recognition) { setChatError('Voice input is not supported in this browser. You can still type your question.'); return; }
-    const recognition = new Recognition(); recognition.lang = language === 'te' ? 'te-IN' : language === 'hi' ? 'hi-IN' : 'en-IN'; recognition.interimResults = false; recognition.onresult = event => { setQuestion(event.results[0][0].transcript); setListening(false); }; recognition.onerror = () => { setChatError('Voice input could not be recognized. Please try again or type your question.'); setListening(false); }; recognition.onend = () => setListening(false); setListening(true); recognition.start();
-  }
-  useEffect(() => { loadWeather(); }, []);
-  useEffect(() => { localStorage.setItem('agri-language', language); }, [language]);
-  useEffect(() => { const timer = setTimeout(async () => { try { const r = await fetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: userId, name: 'Ravi Kumar', location, preferredLanguage: language }) }); if (r.ok) { const data = await r.json(); setUserId(data.id); localStorage.setItem('agri-user-id', data.id); } } catch {} }, 600); return () => clearTimeout(timer); }, [location, language]);
+   async function askAssistant(e) {
+  e?.preventDefault();
 
-  const title = navItems.find(item => item.id === page)?.label || 'Overview';
-  return <div className="app-shell">
-    <aside className="sidebar">
+  if (!question.trim() || chatBusy) return;
+
+  const asked = question.trim();
+
+  setQuestion('');
+  setMessages(current => [
+    ...current,
+    { role: 'user', text: asked }
+  ]);
+
+  setChatBusy(true);
+  setChatError('');
+
+  try {
+    const r = await fetch('/api/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        question: asked,
+        language,
+        location,
+        userId,
+        context: {
+          weather: weather
+            ? {
+                description: weather.current.description,
+                temperature: weather.current.temperature,
+                rainfallForecast: weather.forecast?.map(day => ({
+                  date: day.date,
+                  rainfall: day.rainfall
+                }))
+              }
+            : null,
+          soil: recommendations?.crops?.map(item => item.name) || null
+        }
+      })
+    });
+
+    const data = await r.json();
+
+    if (!r.ok) {
+      throw new Error(data.error);
+    }
+
+    setMessages(current => [
+      ...current,
+      {
+        role: 'assistant',
+        text: data.answer
+      }
+    ]);
+
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+
+      const utterance = new SpeechSynthesisUtterance(data.answer);
+
+      utterance.lang =
+        language === 'te'
+          ? 'te-IN'
+          : language === 'hi'
+          ? 'hi-IN'
+          : 'en-IN';
+
+      window.speechSynthesis.speak(utterance);
+    }
+  } catch (e) {
+    setChatError(
+      e.message || 'The assistant could not answer.'
+    );
+  } finally {
+    setChatBusy(false);
+  }
+}
       <a className="brand" href="#home" onClick={e => { e.preventDefault(); setPage('home'); }}><span className="brand-mark"><Icon name="leaf" size={21}/></span><span>fieldnote<span className="brand-period">.</span><small>FARMING, IN GOOD HANDS</small></span></a>
       <div className="side-label">YOUR SPACE</div>
       <nav className="main-nav">{navItems.map(item => <button key={item.id} className={`nav-link ${page === item.id ? 'active' : ''}`} onClick={() => setPage(item.id)}><Icon name={item.icon}/><span>{item.label}</span>{item.id === 'assistant' && <span className="nav-dot"/>}</button>)}</nav>
